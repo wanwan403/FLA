@@ -1,0 +1,1885 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fail Log Analyzer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+:root {
+  --bg:           #f2f2f7;
+  --surface:      #ffffff;
+  --surface2:     rgba(242,242,247,0.95);
+  --border:       rgba(0,0,0,0.09);
+  --border-hard:  rgba(0,0,0,0.14);
+  --shadow-sm:    0 1px 3px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md:    0 4px 16px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04);
+  --shadow-lg:    0 12px 40px rgba(0,0,0,0.10);
+
+  --blue:         #0071e3;
+  --blue-dim:     rgba(0,113,227,0.10);
+  --green:        #34c759;
+  --green-dim:    rgba(52,199,89,0.11);
+  --red:          #ff3b30;
+  --red-dim:      rgba(255,59,48,0.10);
+  --yellow:       #ff9500;
+  --yellow-dim:   rgba(255,149,0,0.10);
+  --purple:       #af52de;
+  --purple-dim:   rgba(175,82,222,0.10);
+
+  --text:         #1d1d1f;
+  --text-2:       #3a3a3c;
+  --text-muted:   #6e6e73;
+  --text-dim:     #aeaeb2;
+
+  --r-sm: 8px; --r-md: 12px; --r-lg: 16px; --r-xl: 20px;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  font-size: 14px;
+}
+
+/* ── Topbar ── */
+.topbar {
+  background: rgba(242,242,247,0.88);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  height: 52px;
+  display: flex;
+  align-items: center;
+  padding: 0 28px;
+  gap: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.tb-logo {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.tb-logo .dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--red);
+  box-shadow: 0 0 6px var(--red);
+}
+
+.tb-divider { width:1px; height:18px; background: var(--border-hard); }
+.tb-sub { font-size: 13px; color: var(--text-muted); }
+
+/* ── Provider bar ── */
+.provider-bar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 28px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.prov-label { font-size: 12px; color: var(--text-muted); font-weight: 500; }
+
+.prov-select {
+  padding: 6px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border-hard);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+  cursor: pointer;
+}
+.prov-select:focus { border-color: var(--blue); }
+
+.key-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex: 1;
+  max-width: 420px;
+  background: var(--bg);
+  border: 1px solid var(--border-hard);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+.key-wrap:focus-within { border-color: var(--blue); }
+
+.key-prefix {
+  padding: 0 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  background: rgba(0,0,0,0.03);
+  border-right: 1px solid var(--border-hard);
+  height: 34px;
+  display: flex;
+  align-items: center;
+}
+
+.key-input {
+  flex: 1;
+  padding: 0 12px;
+  height: 34px;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-family: 'SF Mono','Menlo',monospace;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+}
+
+.key-input::placeholder { color: var(--text-dim); letter-spacing: 0; font-family: inherit; }
+
+.save-btn {
+  padding: 6px 16px;
+  background: var(--blue);
+  border: none;
+  border-radius: var(--r-sm);
+  color: #fff;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.save-btn:hover { opacity: 0.85; }
+
+.key-status {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-weight: 600;
+}
+.key-status.ok  { background: var(--green-dim); color: var(--green); }
+.key-status.err { background: var(--red-dim);   color: var(--red);   }
+.key-status.none{ color: var(--text-dim); }
+
+/* ── Main layout ── */
+.main {
+  display: grid;
+  grid-template-columns: 440px 1fr;
+  gap: 0;
+  min-height: calc(100vh - 52px - 57px);
+}
+
+/* ── Left panel: upload ── */
+.left-panel {
+  border-right: 1px solid var(--border);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+/* ── Upload section within left panel ── */
+.upload-section {
+  padding: 20px 20px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.upload-section-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+.upload-section-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+.upload-section-label .usl-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+}
+
+.usl-dot.log  { background: var(--red); }
+.usl-dot.pdf  { background: var(--purple); }
+
+/* ── Bottom options area ── */
+.bottom-options {
+  padding: 16px 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ── PDF drop zone style ── */
+.drop-zone.pdf-zone:hover, .drop-zone.pdf-zone.drag-over {
+  border-color: var(--purple);
+  background: var(--purple-dim);
+}
+
+/* ── PDF status chip ── */
+.pdf-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-weight: 600;
+}
+
+.pdf-status.loaded { background: var(--purple-dim); color: var(--purple); }
+.pdf-status.none   { color: var(--text-dim); font-size: 12px; }
+
+/* ── Drop zone ── */
+.drop-zone {
+  border: 2px dashed var(--border-hard);
+  border-radius: var(--r-xl);
+  padding: 36px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: var(--surface);
+  position: relative;
+}
+.drop-zone:hover, .drop-zone.drag-over {
+  border-color: var(--blue);
+  background: var(--blue-dim);
+}
+.drop-zone input[type=file] {
+  position: absolute; inset:0; opacity:0; cursor:pointer;
+}
+.dz-icon { font-size: 36px; margin-bottom: 10px; }
+.dz-title { font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+.dz-sub { font-size: 12px; color: var(--text-muted); }
+.dz-types {
+  margin-top: 10px;
+  display: flex; justify-content: center; gap: 6px;
+}
+.dz-tag {
+  padding: 2px 9px;
+  background: rgba(0,0,0,0.05);
+  border-radius: 20px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ── File info ── */
+.file-info {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  box-shadow: var(--shadow-sm);
+}
+
+.fi-left { display: flex; align-items: center; gap: 10px; }
+.fi-icon { font-size: 22px; }
+.fi-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.fi-size { font-size: 12px; color: var(--text-muted); margin-top: 1px; }
+
+.fi-clear {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0,0,0,0.06);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+}
+.fi-clear:hover { background: var(--red-dim); color: var(--red); }
+
+/* ── PDF preview card ── */
+.pdf-preview-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 12px 14px;
+  box-shadow: var(--shadow-sm);
+}
+
+.pdf-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.pdf-preview-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--purple);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.pdf-page-count {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.pdf-text-preview {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  max-height: 100px;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-all;
+  position: relative;
+}
+
+.pdf-text-preview::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 30px;
+  background: linear-gradient(transparent, var(--surface));
+}
+
+/* ── Config match result cards ── */
+.match-overview {
+  display: grid;
+  grid-template-columns: repeat(3,1fr);
+  gap: 10px;
+  margin-bottom: 0;
+}
+
+.mstat {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 14px 12px;
+  text-align: center;
+  box-shadow: var(--shadow-sm);
+}
+
+.mstat .mn { font-size: 26px; font-weight: 700; line-height: 1; margin-bottom: 4px; }
+.mstat .ml { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; font-weight: 500; }
+.mstat.matched   .mn { color: var(--green);  }
+.mstat.mismatch  .mn { color: var(--red);    }
+.mstat.unsupported .mn { color: var(--yellow); }
+
+.mismatch-list { display: flex; flex-direction: column; gap: 8px; }
+
+.mismatch-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--red);
+  border-radius: 0 var(--r-md) var(--r-md) 0;
+  padding: 11px 14px;
+  box-shadow: var(--shadow-sm);
+}
+
+.mismatch-item.unsupported { border-left-color: var(--yellow); }
+.mismatch-item.warning     { border-left-color: var(--yellow); }
+.mismatch-item.ok          { border-left-color: var(--green);  }
+
+.mi-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.mi-param  { font-size: 13px; font-weight: 600; color: var(--text); }
+.mi-tag {
+  font-size: 10px; font-weight: 700; padding: 2px 7px;
+  border-radius: 4px; text-transform: uppercase; letter-spacing: 0.4px;
+}
+.mi-tag.mismatch    { background: var(--red-dim);    color: var(--red);    }
+.mi-tag.unsupported { background: var(--yellow-dim); color: var(--yellow); }
+.mi-tag.ok          { background: var(--green-dim);  color: var(--green);  }
+
+.mi-detail { font-size: 12px; color: var(--text-muted); line-height: 1.6; }
+.mi-values {
+  margin-top: 5px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.mi-val {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 5px;
+  font-family: 'SF Mono','Menlo',monospace;
+}
+.mi-val.log-val  { background: var(--red-dim);    color: var(--red);    }
+.mi-val.spec-val { background: var(--green-dim);  color: var(--green);  }
+.mi-val.info-val { background: var(--blue-dim);   color: var(--blue);   }
+
+/* ── Log preview ── */
+.log-preview-box {
+  background: #1c1c1e;
+  border: 1px solid var(--border-hard);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+}
+
+.lpb-header {
+  padding: 8px 14px;
+  background: #2c2c2e;
+  border-bottom: 1px solid #3a3a3c;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.lpb-title { font-size: 12px; color: #8e8e93; font-weight: 600; }
+.lpb-lines { font-size: 11px; color: #636366; }
+
+.lpb-content {
+  padding: 12px 14px;
+  font-family: 'SF Mono','Menlo','Consolas',monospace;
+  font-size: 11px;
+  line-height: 1.7;
+  color: #e5e5ea;
+  height: 220px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.lpb-content::-webkit-scrollbar { width: 4px; }
+.lpb-content::-webkit-scrollbar-track { background: transparent; }
+.lpb-content::-webkit-scrollbar-thumb { background: #3a3a3c; border-radius: 2px; }
+
+.lpb-line { display: flex; gap: 8px; }
+.lpb-no { color: #48484a; flex-shrink: 0; width: 32px; text-align: right; }
+.lpb-err { color: #ff6961; }
+.lpb-warn { color: #ffd60a; }
+
+/* ── Analyze button ── */
+.analyze-btn {
+  width: 100%;
+  padding: 14px;
+  background: var(--blue);
+  border: none;
+  border-radius: var(--r-lg);
+  color: #fff;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  letter-spacing: -0.2px;
+  box-shadow: 0 2px 12px rgba(0,113,227,0.28);
+}
+.analyze-btn:hover:not(:disabled) { opacity: 0.88; }
+.analyze-btn:active:not(:disabled) { transform: scale(0.98); }
+.analyze-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ── Options ── */
+.options-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 14px 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+.opt-title { font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.4px; }
+
+.opt-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+}
+.opt-row:last-child { border-bottom: none; }
+
+.opt-key { font-size: 13px; color: var(--text-2); }
+.opt-val { font-size: 13px; color: var(--text-muted); text-align: right; }
+
+.opt-select {
+  padding: 4px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border-hard);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
+}
+
+/* ── Right panel: results ── */
+.right-panel {
+  padding: 24px 28px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* ── Placeholder ── */
+.placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  gap: 12px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 60px 20px;
+}
+.placeholder .ph-icon { font-size: 52px; opacity: 0.25; }
+.placeholder p { font-size: 14px; line-height: 1.6; max-width: 260px; }
+
+/* ── Progress ── */
+.progress-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  padding: 28px 24px;
+  box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+}
+
+.spinner {
+  width: 40px; height: 40px;
+  border: 3px solid var(--border-hard);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.prog-title { font-size: 15px; font-weight: 600; }
+.prog-sub { font-size: 13px; color: var(--text-muted); }
+
+.prog-bar-wrap {
+  width: 100%;
+  height: 4px;
+  background: var(--border-hard);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.prog-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--blue), var(--purple));
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+
+/* ── Result cards ── */
+.result-header {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  padding: 20px 22px;
+  box-shadow: var(--shadow-md);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.rh-left { display: flex; align-items: center; gap: 12px; }
+.rh-icon { font-size: 28px; }
+.rh-title { font-size: 17px; font-weight: 700; letter-spacing: -0.4px; }
+.rh-sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+.severity-badge {
+  padding: 5px 14px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+.severity-badge.critical { background: var(--red-dim);    color: var(--red);    }
+.severity-badge.high     { background: var(--yellow-dim); color: var(--yellow); }
+.severity-badge.medium   { background: var(--blue-dim);   color: var(--blue);   }
+.severity-badge.low      { background: var(--green-dim);  color: var(--green);  }
+
+/* ── Summary ── */
+.summary-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  padding: 20px 22px;
+  box-shadow: var(--shadow-md);
+}
+
+.sc-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+}
+
+.sc-text {
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--text-2);
+}
+
+/* ── Root cause list ── */
+.rc-list { display: flex; flex-direction: column; gap: 10px; }
+
+.rc-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 14px 16px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.rc-rank {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  background: var(--blue-dim);
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+
+.rc-rank.rank-1 { background: var(--red-dim);    color: var(--red);    }
+.rc-rank.rank-2 { background: var(--yellow-dim); color: var(--yellow); }
+.rc-rank.rank-3 { background: var(--blue-dim);   color: var(--blue);   }
+
+.rc-body { flex: 1; }
+.rc-cause { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+.rc-detail { font-size: 13px; color: var(--text-muted); line-height: 1.6; }
+.rc-evidence {
+  margin-top: 6px;
+  padding: 6px 10px;
+  background: #1c1c1e;
+  border-radius: 6px;
+  font-family: 'SF Mono','Menlo',monospace;
+  font-size: 11px;
+  color: #ff6961;
+  word-break: break-all;
+}
+
+/* ── Recommendations ── */
+.rec-list { display: flex; flex-direction: column; gap: 8px; }
+
+.rec-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--blue);
+  border-radius: 0 var(--r-md) var(--r-md) 0;
+  padding: 12px 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+.rec-item.action-check  { border-left-color: var(--yellow); }
+.rec-item.action-fix    { border-left-color: var(--red);    }
+.rec-item.action-verify { border-left-color: var(--green);  }
+
+.rec-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.rec-tag {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.rec-tag.check  { background: var(--yellow-dim); color: var(--yellow); }
+.rec-tag.fix    { background: var(--red-dim);    color: var(--red);    }
+.rec-tag.verify { background: var(--green-dim);  color: var(--green);  }
+.rec-tag.info   { background: var(--blue-dim);   color: var(--blue);   }
+
+.rec-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.rec-desc  { font-size: 13px; color: var(--text-muted); line-height: 1.6; }
+
+/* ── Error stats ── */
+.err-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.estat {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 14px 16px;
+  box-shadow: var(--shadow-sm);
+  text-align: center;
+}
+
+.estat .en { font-size: 26px; font-weight: 700; line-height: 1; margin-bottom: 4px; }
+.estat .el { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; font-weight: 500; }
+.estat.errors .en   { color: var(--red);    }
+.estat.warnings .en { color: var(--yellow); }
+.estat.lines .en    { color: var(--text);   }
+
+/* ── Raw log section ── */
+.raw-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+  user-select: none;
+  transition: background 0.15s;
+}
+.raw-toggle:hover { background: var(--bg); }
+.raw-toggle-title { font-size: 13px; font-weight: 600; color: var(--text-muted); }
+.raw-chevron { font-size: 12px; color: var(--text-dim); transition: transform 0.2s; }
+.raw-chevron.open { transform: rotate(90deg); }
+
+.raw-log-box {
+  background: #1c1c1e;
+  border: 1px solid var(--border-hard);
+  border-radius: var(--r-lg);
+  padding: 14px;
+  font-family: 'SF Mono','Menlo',monospace;
+  font-size: 11px;
+  line-height: 1.7;
+  color: #e5e5ea;
+  height: 260px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  display: none;
+}
+
+.raw-log-box.visible { display: block; }
+
+.raw-log-box::-webkit-scrollbar { width: 4px; }
+.raw-log-box::-webkit-scrollbar-thumb { background: #3a3a3c; border-radius: 2px; }
+
+/* ── Error message ── */
+.error-card {
+  background: var(--red-dim);
+  border: 1px solid rgba(255,59,48,0.25);
+  border-radius: var(--r-lg);
+  padding: 16px 18px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.error-card .ec-icon { font-size: 20px; flex-shrink: 0; }
+.error-card .ec-title { font-size: 14px; font-weight: 600; color: var(--red); margin-bottom: 4px; }
+.error-card .ec-msg { font-size: 13px; color: var(--text-muted); line-height: 1.6; }
+
+/* ── Export btn ── */
+.export-btn {
+  padding: 10px 20px;
+  background: var(--surface);
+  border: 1px solid var(--border-hard);
+  border-radius: var(--r-md);
+  color: var(--text-2);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.export-btn:hover { background: var(--bg); border-color: var(--blue); color: var(--blue); }
+
+/* ── Check Match button ── */
+.check-match-btn {
+  width: 100%;
+  padding: 12px;
+  background: var(--surface);
+  border: 1.5px solid var(--purple);
+  border-radius: var(--r-lg);
+  color: var(--purple);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s, transform 0.1s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  letter-spacing: -0.2px;
+}
+.check-match-btn:hover:not(:disabled) {
+  background: var(--purple-dim);
+  box-shadow: 0 2px 12px rgba(175,82,222,0.18);
+}
+.check-match-btn:active:not(:disabled) { transform: scale(0.98); }
+.check-match-btn:disabled { opacity: 0.35; cursor: not-allowed; border-color: var(--border-hard); color: var(--text-dim); }
+
+/* section card wrapper */
+.section-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  padding: 18px 20px;
+  box-shadow: var(--shadow-md);
+}
+
+.section-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+</style>
+</head>
+<body>
+
+<!-- Topbar -->
+<div class="topbar">
+  <div class="tb-logo"><div class="dot"></div>Fail Log Analyzer</div>
+  <div class="tb-divider"></div>
+  <div class="tb-sub">AI-Powered Root Cause &amp; Config Analysis</div>
+</div>
+
+<!-- Provider config bar -->
+<div class="provider-bar">
+  <span class="prov-label">AI Provider</span>
+  <select class="prov-select" id="providerSelect" onchange="onProviderChange()">
+    <option value="openai">OpenAI (GPT-4o)</option>
+    <option value="deepseek">DeepSeek</option>
+  </select>
+  <div class="key-wrap">
+    <div class="key-prefix" id="keyPrefix">sk-…</div>
+    <input class="key-input" id="apiKeyInput" type="password" placeholder="Paste your API key here" />
+  </div>
+  <button class="save-btn" onclick="saveKey()">Save</button>
+  <span class="key-status none" id="keyStatus">No key saved</span>
+</div>
+
+<!-- Main -->
+<div class="main">
+
+  <!-- Left: upload + options -->
+  <div class="left-panel">
+
+    <!-- ── Section 1: Fail Log ── -->
+    <div class="upload-section">
+      <div class="upload-section-label">
+        <span class="usl-dot log"></span>Fail Log
+      </div>
+
+      <!-- Log drop zone -->
+      <div class="drop-zone" id="dropZone">
+        <input type="file" id="fileInput" accept=".log,.txt,.csv,.json" onchange="handleFile(this.files[0])" />
+        <div class="dz-icon">📂</div>
+        <div class="dz-title">Drop your fail log here</div>
+        <div class="dz-sub">or click to browse</div>
+        <div class="dz-types">
+          <span class="dz-tag">.log</span>
+          <span class="dz-tag">.txt</span>
+          <span class="dz-tag">.csv</span>
+          <span class="dz-tag">.json</span>
+        </div>
+      </div>
+
+      <!-- Log file info -->
+      <div class="file-info" id="fileInfo" style="display:none">
+        <div class="fi-left">
+          <div class="fi-icon">📄</div>
+          <div>
+            <div class="fi-name" id="fileName">—</div>
+            <div class="fi-size" id="fileSize">—</div>
+          </div>
+        </div>
+        <button class="fi-clear" onclick="clearFile()" title="Remove">✕</button>
+      </div>
+
+      <!-- Log preview -->
+      <div class="log-preview-box" id="logPreviewBox" style="display:none">
+        <div class="lpb-header">
+          <span class="lpb-title">LOG PREVIEW</span>
+          <span class="lpb-lines" id="logLineCount">0 lines</span>
+        </div>
+        <div class="lpb-content" id="logPreviewContent"></div>
+      </div>
+    </div>
+
+    <div class="upload-section-divider"></div>
+
+    <!-- ── Section 2: PDF Config ── -->
+    <div class="upload-section">
+      <div class="upload-section-label">
+        <span class="usl-dot pdf"></span>Configuration PDF
+        <span class="pdf-status none" id="pdfStatus">Optional</span>
+      </div>
+
+      <!-- PDF drop zone -->
+      <div class="drop-zone pdf-zone" id="pdfDropZone">
+        <input type="file" id="pdfInput" accept=".pdf" onchange="handlePdf(this.files[0])" />
+        <div class="dz-icon">📑</div>
+        <div class="dz-title">Drop PDF config file here</div>
+        <div class="dz-sub">AI will check log vs. spec</div>
+        <div class="dz-types">
+          <span class="dz-tag">.pdf</span>
+        </div>
+      </div>
+
+      <!-- PDF file info -->
+      <div class="file-info" id="pdfFileInfo" style="display:none">
+        <div class="fi-left">
+          <div class="fi-icon">📑</div>
+          <div>
+            <div class="fi-name" id="pdfFileName">—</div>
+            <div class="fi-size" id="pdfFileSize">—</div>
+          </div>
+        </div>
+        <button class="fi-clear" onclick="clearPdf()" title="Remove">✕</button>
+      </div>
+
+      <!-- PDF extract preview -->
+      <div class="pdf-preview-card" id="pdfPreviewCard" style="display:none">
+        <div class="pdf-preview-header">
+          <span class="pdf-preview-title">📄 Extracted Text</span>
+          <span class="pdf-page-count" id="pdfPageCount"></span>
+        </div>
+        <div class="pdf-text-preview" id="pdfTextPreview"></div>
+      </div>
+    </div>
+
+    <div class="upload-section-divider"></div>
+
+    <!-- ── Options + Button ── -->
+    <div class="bottom-options">
+      <!-- Analyze options -->
+      <div class="options-card">
+        <div class="opt-title">Analysis Options</div>
+        <div class="opt-row">
+          <span class="opt-key">Language</span>
+          <select class="opt-select" id="langSelect">
+            <option value="english">English</option>
+            <option value="chinese">中文</option>
+          </select>
+        </div>
+        <div class="opt-row">
+          <span class="opt-key">Detail Level</span>
+          <select class="opt-select" id="detailSelect">
+            <option value="detailed">Detailed</option>
+            <option value="brief">Brief</option>
+          </select>
+        </div>
+        <div class="opt-row">
+          <span class="opt-key">Max Root Causes</span>
+          <select class="opt-select" id="rcCountSelect">
+            <option value="3">Top 3</option>
+            <option value="5">Top 5</option>
+            <option value="all">All</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Analyze button -->
+      <button class="analyze-btn" id="analyzeBtn" onclick="startAnalysis()" disabled>
+        <span id="analyzeBtnIcon">🔍</span>
+        <span id="analyzeBtnText">Analyze Fail Log</span>
+      </button>
+
+      <!-- Check Match button -->
+      <button class="check-match-btn" id="checkMatchBtn" onclick="startCheckMatch()" disabled>
+        <span>📋</span>
+        <span id="checkMatchBtnText">Check Config Match</span>
+      </button>
+    </div>
+
+  </div>
+
+  <!-- Right: results -->
+  <div class="right-panel" id="rightPanel">
+    <div class="placeholder">
+      <div class="ph-icon">🧠</div>
+      <p>Upload a fail log and click <strong>Analyze</strong> to get AI-powered root cause analysis.</p>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════
+// State
+// ══════════════════════════════════════════════════════
+let logContent   = '';
+let logFileName  = '';
+let pdfContent   = '';   // extracted text from PDF
+let pdfFileName  = '';
+let savedKeys    = { openai: '', deepseek: '' };
+
+// PDF.js worker
+if (typeof pdfjsLib !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
+
+// ══════════════════════════════════════════════════════
+// Provider / Key UI
+// ══════════════════════════════════════════════════════
+function onProviderChange() {
+  const p = document.getElementById('providerSelect').value;
+  document.getElementById('keyPrefix').textContent = p === 'openai' ? 'sk-…' : 'sk-…';
+  document.getElementById('apiKeyInput').value = savedKeys[p] ? '••••••••••••••••' : '';
+  updateKeyStatus();
+}
+
+function saveKey() {
+  const p = document.getElementById('providerSelect').value;
+  const v = document.getElementById('apiKeyInput').value.trim();
+  if (!v || v === '••••••••••••••••') return;
+  savedKeys[p] = v;
+  document.getElementById('apiKeyInput').value = '••••••••••••••••';
+  updateKeyStatus();
+  updateAnalyzeBtn();
+}
+
+function updateKeyStatus() {
+  const p   = document.getElementById('providerSelect').value;
+  const el  = document.getElementById('keyStatus');
+  if (savedKeys[p]) {
+    el.textContent = '✓ Key saved';
+    el.className   = 'key-status ok';
+  } else {
+    el.textContent = 'No key saved';
+    el.className   = 'key-status none';
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// File handling
+// ══════════════════════════════════════════════════════
+// ── Log drop zone ──
+const dropZone = document.getElementById('dropZone');
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) handleFile(f);
+});
+
+// ── PDF drop zone ──
+const pdfDropZone = document.getElementById('pdfDropZone');
+
+pdfDropZone.addEventListener('dragover', e => { e.preventDefault(); pdfDropZone.classList.add('drag-over'); });
+pdfDropZone.addEventListener('dragleave', () => pdfDropZone.classList.remove('drag-over'));
+pdfDropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  pdfDropZone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) handlePdf(f);
+});
+
+function handleFile(file) {
+  if (!file) return;
+  logFileName = file.name;
+
+  document.getElementById('fileInfo').style.display = 'flex';
+  document.getElementById('fileName').textContent = file.name;
+  document.getElementById('fileSize').textContent = formatBytes(file.size);
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    logContent = e.target.result;
+    renderPreview(logContent);
+    updateAnalyzeBtn();
+  };
+  reader.readAsText(file);
+}
+
+function clearFile() {
+  logContent  = '';
+  logFileName = '';
+  document.getElementById('fileInput').value = '';
+  document.getElementById('fileInfo').style.display      = 'none';
+  document.getElementById('logPreviewBox').style.display = 'none';
+  resetResultPanel();
+  updateAnalyzeBtn();
+}
+
+// ── PDF handling ──
+async function handlePdf(file) {
+  if (!file || file.type !== 'application/pdf') return;
+  pdfFileName = file.name;
+
+  document.getElementById('pdfFileInfo').style.display = 'flex';
+  document.getElementById('pdfFileName').textContent   = file.name;
+  document.getElementById('pdfFileSize').textContent   = formatBytes(file.size);
+
+  const statusEl = document.getElementById('pdfStatus');
+  statusEl.textContent = 'Extracting…';
+  statusEl.className   = 'pdf-status none';
+
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf  = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const numPages = pdf.numPages;
+    let fullText = '';
+
+    for (let i = 1; i <= numPages; i++) {
+      const page    = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      const pageText = content.items.map(item => item.str).join(' ');
+      fullText += `\n--- Page ${i} ---\n${pageText}`;
+    }
+
+    pdfContent = fullText.trim();
+
+    statusEl.textContent = '✓ Loaded';
+    statusEl.className   = 'pdf-status loaded';
+
+    document.getElementById('pdfPreviewCard').style.display = 'block';
+    document.getElementById('pdfPageCount').textContent     = `${numPages} pages`;
+    document.getElementById('pdfTextPreview').textContent   = pdfContent.slice(0, 400);
+
+    updateAnalyzeBtn();
+  } catch (e) {
+    statusEl.textContent = '✗ Failed';
+    statusEl.className   = 'pdf-status none';
+    pdfContent = '';
+  }
+}
+
+function clearPdf() {
+  pdfContent  = '';
+  pdfFileName = '';
+  document.getElementById('pdfInput').value = '';
+  document.getElementById('pdfFileInfo').style.display    = 'none';
+  document.getElementById('pdfPreviewCard').style.display = 'none';
+  const s = document.getElementById('pdfStatus');
+  s.textContent = 'Optional';
+  s.className   = 'pdf-status none';
+  updateAnalyzeBtn();
+}
+
+function resetResultPanel() {
+  document.getElementById('rightPanel').innerHTML = `
+    <div class="placeholder">
+      <div class="ph-icon">🧠</div>
+      <p>Upload a fail log and click <strong>Analyze</strong> to get AI-powered root cause analysis.</p>
+    </div>`;
+}
+
+function renderPreview(text) {
+  const lines = text.split('\n');
+  document.getElementById('logLineCount').textContent = `${lines.length} lines`;
+  document.getElementById('logPreviewBox').style.display = 'block';
+
+  const html = lines.slice(0, 200).map((line, i) => {
+    const n = String(i + 1).padStart(4, ' ');
+    const cls = /error|fail|exception|critical/i.test(line) ? 'lpb-err'
+               : /warn/i.test(line) ? 'lpb-warn' : '';
+    return `<div class="lpb-line"><span class="lpb-no">${n}</span><span class="${cls}">${esc(line)}</span></div>`;
+  }).join('');
+
+  document.getElementById('logPreviewContent').innerHTML = html +
+    (lines.length > 200 ? `<div style="color:#636366;padding:4px 0">… ${lines.length - 200} more lines (sent to AI in full)</div>` : '');
+}
+
+function updateAnalyzeBtn() {
+  const p   = document.getElementById('providerSelect').value;
+  const ok  = logContent.length > 0 && !!savedKeys[p];
+  const btn = document.getElementById('analyzeBtn');
+  btn.disabled = !ok;
+  const textEl = document.getElementById('analyzeBtnText');
+  if (pdfContent && logContent) {
+    textEl.textContent = 'Analyze Log + Config';
+  } else {
+    textEl.textContent = 'Analyze Fail Log';
+  }
+
+  // Check Match button: needs BOTH log + pdf + key
+  const matchBtn = document.getElementById('checkMatchBtn');
+  const matchOk  = logContent.length > 0 && pdfContent.length > 0 && !!savedKeys[p];
+  matchBtn.disabled = !matchOk;
+  document.getElementById('checkMatchBtnText').textContent =
+    matchOk ? 'Check Config Match' : 'Check Config Match (needs log + PDF)';
+}
+
+// ══════════════════════════════════════════════════════
+// Check Match (standalone config compatibility)
+// ══════════════════════════════════════════════════════
+async function startCheckMatch() {
+  const provider = document.getElementById('providerSelect').value;
+  const key      = savedKeys[provider];
+  const lang     = document.getElementById('langSelect').value;
+
+  if (!key || !logContent || !pdfContent) return;
+
+  const MAX_LOG = 10000;
+  const MAX_PDF = 8000;
+  const logSnippet = logContent.length > MAX_LOG
+    ? logContent.slice(0, MAX_LOG) + '\n[...truncated]' : logContent;
+  const pdfSnippet = pdfContent.length > MAX_PDF
+    ? pdfContent.slice(0, MAX_PDF) + '\n[...PDF truncated]' : pdfContent;
+
+  // Progress
+  const panel = document.getElementById('rightPanel');
+  panel.innerHTML = `
+    <div class="progress-card">
+      <div class="spinner" style="border-top-color:var(--purple)"></div>
+      <div class="prog-title" style="color:var(--purple)">Checking config match…</div>
+      <div class="prog-sub" id="progSub">Comparing log parameters vs. spec</div>
+      <div class="prog-bar-wrap">
+        <div class="prog-bar" id="progBar" style="width:5%;background:linear-gradient(90deg,var(--purple),var(--blue))"></div>
+      </div>
+    </div>`;
+
+  const matchSteps = [
+    [700,  20, 'Parsing PDF configuration spec…'],
+    [1800, 45, 'Extracting log parameters…'],
+    [3000, 70, 'Cross-referencing values…'],
+    [4500, 90, 'Generating match report…'],
+  ];
+  matchSteps.forEach(([delay, pct, msg]) => setTimeout(() => {
+    const bar = document.getElementById('progBar');
+    const sub = document.getElementById('progSub');
+    if (bar) bar.style.width = pct + '%';
+    if (sub) sub.textContent = msg;
+  }, delay));
+
+  const prompt = buildMatchPrompt(logSnippet, pdfSnippet, lang);
+
+  try {
+    const raw = await callAI(provider, key, prompt);
+    showMatchResults(raw);
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+function buildMatchPrompt(log, pdfText, lang) {
+  const langInstr = lang === 'chinese'
+    ? 'Reply entirely in Simplified Chinese (简体中文).'
+    : 'Reply in English.';
+
+  return `You are a hardware/software configuration validation expert. ${langInstr}
+
+Your ONLY task: cross-reference the FAIL LOG against the CONFIGURATION SPEC (PDF) and determine if the configuration used during the test matches what the spec requires.
+
+For EVERY configuration parameter you can identify in EITHER document:
+1. Check if it appears in both
+2. Compare the values
+3. Flag mismatches, unsupported features, and missing required settings
+
+Respond ONLY with a valid JSON object (no markdown, no extra text):
+
+{
+  "overallCompatibility": "compatible | partial | incompatible",
+  "matchSummary": "one paragraph explaining the overall config compatibility status",
+  "matched": number,
+  "mismatches": number,
+  "unsupported": number,
+  "missing": number,
+  "items": [
+    {
+      "parameter": "parameter/feature name",
+      "status": "matched | mismatch | unsupported | missing",
+      "logValue": "value in the log (or 'not found')",
+      "specValue": "value required by spec (or 'not specified')",
+      "detail": "concise explanation of match/mismatch"
+    }
+  ]
+}
+
+FAIL LOG:
+\`\`\`
+${log}
+\`\`\`
+
+CONFIGURATION SPEC (from PDF):
+\`\`\`
+${pdfText}
+\`\`\``;
+}
+
+function showMatchResults(rawJson) {
+  let cm;
+  try {
+    cm = JSON.parse(rawJson);
+  } catch {
+    showError('AI returned an invalid response.\n\nRaw output:\n' + rawJson.slice(0, 400));
+    return;
+  }
+
+  const compatLabel = {
+    compatible:   '✅ Compatible',
+    partial:      '⚠️ Partially Compatible',
+    incompatible: '❌ Incompatible'
+  }[cm.overallCompatibility] || cm.overallCompatibility;
+
+  const compatColor = {
+    compatible:   'var(--green)',
+    partial:      'var(--yellow)',
+    incompatible: 'var(--red)'
+  }[cm.overallCompatibility] || 'var(--text)';
+
+  const statusOrder = { mismatch:0, unsupported:1, missing:2, matched:3 };
+  const sorted = (cm.items || []).slice().sort((a,b) =>
+    (statusOrder[a.status]||9) - (statusOrder[b.status]||9));
+
+  const itemsHtml = sorted.map(item => {
+    const cls   = { matched:'ok', mismatch:'mismatch', unsupported:'unsupported', missing:'mismatch' }[item.status] || 'ok';
+    const label = { matched:'✓ MATCH', mismatch:'✗ MISMATCH', unsupported:'⚠ UNSUPPORTED', missing:'□ MISSING' }[item.status] || item.status.toUpperCase();
+    return `
+      <div class="mismatch-item ${cls}">
+        <div class="mi-top">
+          <div class="mi-param">${esc(item.parameter||'')}</div>
+          <span class="mi-tag ${cls}">${label}</span>
+        </div>
+        <div class="mi-detail">${esc(item.detail||'')}</div>
+        <div class="mi-values">
+          ${item.logValue  ? `<span class="mi-val log-val">Log: ${esc(item.logValue)}</span>`  : ''}
+          ${item.specValue ? `<span class="mi-val spec-val">Spec: ${esc(item.specValue)}</span>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+
+  const panel = document.getElementById('rightPanel');
+  panel.innerHTML = `
+    <!-- Header -->
+    <div class="result-header">
+      <div class="rh-left">
+        <div class="rh-icon">📋</div>
+        <div>
+          <div class="rh-title">Config Match Report</div>
+          <div class="rh-sub">${esc(logFileName)} vs ${esc(pdfFileName)} · ${new Date().toLocaleTimeString()}</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <div style="padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;
+             background:${compatColor}18;color:${compatColor}">${compatLabel}</div>
+        <button class="export-btn" onclick="exportMatchReport()">⬇ Export</button>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+      <div class="mstat matched"><div class="mn">${cm.matched??'—'}</div><div class="ml">Matched</div></div>
+      <div class="mstat mismatch"><div class="mn">${cm.mismatches??'—'}</div><div class="ml">Mismatch</div></div>
+      <div class="mstat unsupported"><div class="mn">${cm.unsupported??'—'}</div><div class="ml">Unsupported</div></div>
+      <div class="mstat" style=""><div class="mn" style="color:var(--text-muted)">${cm.missing??'—'}</div><div class="ml">Missing</div></div>
+    </div>
+
+    <!-- Summary -->
+    <div class="summary-card">
+      <div class="sc-title">📝 Match Summary</div>
+      <div class="sc-text">${esc(cm.matchSummary||'No summary.')}</div>
+    </div>
+
+    <!-- Items -->
+    <div class="section-card" style="border-left:3px solid var(--purple)">
+      <div class="section-title" style="color:var(--purple)">🔍 Parameter-by-Parameter Check</div>
+      <div class="mismatch-list">${itemsHtml||'<div style="color:var(--text-muted);font-size:13px">No items found.</div>'}</div>
+    </div>
+  `;
+
+  window._lastMatchReport = { cm, logFileName, pdfFileName };
+}
+
+function exportMatchReport() {
+  if (!window._lastMatchReport) return;
+  const { cm, logFileName, pdfFileName } = window._lastMatchReport;
+  const txt = [
+    'CONFIG MATCH REPORT',
+    `Generated: ${new Date().toLocaleString()}`,
+    `Log: ${logFileName}`,
+    `Config PDF: ${pdfFileName}`,
+    `Overall: ${cm.overallCompatibility?.toUpperCase()}`,
+    `Matched: ${cm.matched}  |  Mismatches: ${cm.mismatches}  |  Unsupported: ${cm.unsupported}  |  Missing: ${cm.missing}`,
+    '',
+    '─── SUMMARY ───',
+    cm.matchSummary,
+    '',
+    '─── PARAMETER DETAILS ───',
+    ...(cm.items||[]).map(i =>
+      `[${i.status?.toUpperCase()}] ${i.parameter}\n   Log: ${i.logValue}  |  Spec: ${i.specValue}\n   ${i.detail}`
+    ),
+  ].join('\n');
+
+  const blob = new Blob([txt], { type:'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `config_match_${logFileName.replace(/\.[^.]+$/,'')}_${Date.now()}.txt`;
+  a.click();
+}
+
+// ══════════════════════════════════════════════════════
+// Analysis
+// ══════════════════════════════════════════════════════
+async function startAnalysis() {
+  const provider = document.getElementById('providerSelect').value;
+  const key      = savedKeys[provider];
+  const lang     = document.getElementById('langSelect').value;
+  const detail   = document.getElementById('detailSelect').value;
+  const rcCount  = document.getElementById('rcCountSelect').value;
+
+  if (!key || !logContent) return;
+
+  // Truncate very large logs
+  const MAX_CHARS = 12000;
+  const logSnippet = logContent.length > MAX_CHARS
+    ? logContent.slice(0, MAX_CHARS) + '\n\n[...truncated, original length: ' + logContent.length + ' chars]'
+    : logContent;
+
+  // Truncate PDF too
+  const MAX_PDF = 8000;
+  const pdfSnippet = pdfContent.length > MAX_PDF
+    ? pdfContent.slice(0, MAX_PDF) + '\n\n[...PDF truncated, original length: ' + pdfContent.length + ' chars]'
+    : pdfContent;
+
+  // Show progress
+  showProgress(!!pdfContent);
+
+  const prompt = buildPrompt(logSnippet, pdfSnippet, lang, detail, rcCount);
+
+  try {
+    const raw = await callAI(provider, key, prompt);
+    showResults(raw, logContent, !!pdfContent);
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+function buildPrompt(log, pdfText, lang, detail, rcCount) {
+  const langInstr = lang === 'chinese'
+    ? 'Reply entirely in Simplified Chinese (简体中文).'
+    : 'Reply in English.';
+
+  const detailInstr = detail === 'brief'
+    ? 'Keep each section concise (2-3 sentences max per item).'
+    : 'Provide thorough technical details for each section.';
+
+  const rcInstr = rcCount === 'all'
+    ? 'List all possible root causes found.'
+    : `Focus on the top ${rcCount} most likely root causes.`;
+
+  const hasPdf = pdfText && pdfText.length > 0;
+
+  const configSection = hasPdf ? `
+
+CONFIGURATION SPEC (extracted from PDF):
+\`\`\`
+${pdfText}
+\`\`\`` : '';
+
+  const configSchemaField = hasPdf ? `
+  "configMatch": {
+    "matched": number,
+    "mismatches": number,
+    "unsupported": number,
+    "overallCompatibility": "compatible | partial | incompatible",
+    "items": [
+      {
+        "parameter": "config parameter name",
+        "status": "mismatch | unsupported | ok",
+        "logValue": "value seen in log",
+        "specValue": "value required by spec",
+        "detail": "explanation of the discrepancy or issue"
+      }
+    ]
+  },` : '';
+
+  const configInstruction = hasPdf
+    ? `\n\nCRITICAL: Also cross-reference the fail log against the configuration spec. For each parameter found in the log, check if it matches the spec. Identify any: (1) mismatches between log values and spec values, (2) features or settings used in the log that are marked as unsupported or not present in the spec, (3) missing required configurations. Populate the configMatch field thoroughly.`
+    : '';
+
+  return `You are a senior hardware/software test engineer specializing in root cause analysis of fail logs.${configInstruction}
+${langInstr} ${detailInstr} ${rcInstr}
+
+Analyze the following fail log and respond ONLY with a valid JSON object matching this exact schema (no markdown, no extra text):
+
+{
+  "summary": "string — one paragraph overview of what failed and when",
+  "severity": "critical | high | medium | low",
+  "errorCount": number,
+  "warningCount": number,
+  "totalLines": number,${configSchemaField}
+  "rootCauses": [
+    {
+      "rank": 1,
+      "cause": "short title of root cause",
+      "detail": "technical explanation",
+      "evidence": "exact log line or snippet that indicates this cause"
+    }
+  ],
+  "recommendations": [
+    {
+      "type": "fix | check | verify | info",
+      "title": "short action title",
+      "description": "detailed action description"
+    }
+  ]
+}
+
+FAIL LOG:
+\`\`\`
+${log}
+\`\`\`${configSection}`;
+}
+
+async function callAI(provider, key, prompt) {
+  let url, body, headers;
+
+  if (provider === 'openai') {
+    url = 'https://api.openai.com/v1/chat/completions';
+    headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` };
+    body = JSON.stringify({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.2,
+      max_tokens: 2048
+    });
+  } else {
+    url = 'https://api.deepseek.com/chat/completions';
+    headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` };
+    body = JSON.stringify({
+      model: 'deepseek-chat',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.2,
+      max_tokens: 2048
+    });
+  }
+
+  const resp = await fetch(url, { method: 'POST', headers, body });
+
+  if (!resp.ok) {
+    const errBody = await resp.text();
+    throw new Error(`API error ${resp.status}: ${errBody.slice(0, 200)}`);
+  }
+
+  const data = await resp.json();
+  const raw  = data.choices?.[0]?.message?.content || '';
+
+  // Strip markdown code fences if present
+  const jsonMatch = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+  return jsonMatch ? jsonMatch[1] : raw;
+}
+
+// ══════════════════════════════════════════════════════
+// Render: Progress
+// ══════════════════════════════════════════════════════
+let progTimer = null;
+let progValue = 0;
+
+function showProgress(hasPdf) {
+  progValue = 0;
+  const panel = document.getElementById('rightPanel');
+  panel.innerHTML = `
+    <div class="progress-card">
+      <div class="spinner"></div>
+      <div class="prog-title">${hasPdf ? 'Analyzing log + config…' : 'Analyzing fail log…'}</div>
+      <div class="prog-sub" id="progSub">Sending to AI engine</div>
+      <div class="prog-bar-wrap">
+        <div class="prog-bar" id="progBar" style="width:5%"></div>
+      </div>
+    </div>`;
+
+  const steps = hasPdf ? [
+    [800,  12, 'Parsing log structure…'],
+    [1800, 28, 'Extracting config parameters…'],
+    [3000, 48, 'Cross-referencing log vs. spec…'],
+    [4500, 65, 'Identifying mismatches…'],
+    [6000, 80, 'Running root cause inference…'],
+    [7500, 92, 'Generating report…'],
+  ] : [
+    [800,  15, 'Parsing log structure…'],
+    [1800, 35, 'Identifying error patterns…'],
+    [3000, 60, 'Running root cause inference…'],
+    [4500, 80, 'Generating recommendations…'],
+    [6000, 92, 'Formatting report…'],
+  ];
+
+  steps.forEach(([delay, pct, msg]) => {
+    setTimeout(() => {
+      const bar = document.getElementById('progBar');
+      const sub = document.getElementById('progSub');
+      if (bar) bar.style.width = pct + '%';
+      if (sub) sub.textContent = msg;
+    }, delay);
+  });
+}
+
+// ══════════════════════════════════════════════════════
+// Render: Results
+// ══════════════════════════════════════════════════════
+function showResults(rawJson, fullLog, hasPdf) {
+  let data;
+  try {
+    data = JSON.parse(rawJson);
+  } catch {
+    showError('AI returned an invalid response. Please try again.\n\nRaw output:\n' + rawJson.slice(0, 400));
+    return;
+  }
+
+  const sev = (data.severity || 'medium').toLowerCase();
+  const sevLabel = { critical:'⛔ CRITICAL', high:'🔴 HIGH', medium:'🟡 MEDIUM', low:'🟢 LOW' }[sev] || sev.toUpperCase();
+
+  const rcHtml = (data.rootCauses || []).map((rc, i) => `
+    <div class="rc-item">
+      <div class="rc-rank rank-${Math.min(rc.rank||i+1, 3)}">#${rc.rank||i+1}</div>
+      <div class="rc-body">
+        <div class="rc-cause">${esc(rc.cause||'')}</div>
+        <div class="rc-detail">${esc(rc.detail||'')}</div>
+        ${rc.evidence ? `<div class="rc-evidence">${esc(rc.evidence)}</div>` : ''}
+      </div>
+    </div>`).join('');
+
+  const recHtml = (data.recommendations || []).map(r => `
+    <div class="rec-item action-${r.type||'info'}">
+      <div class="rec-top">
+        <div class="rec-title">${esc(r.title||'')}</div>
+        <span class="rec-tag ${r.type||'info'}">${(r.type||'info').toUpperCase()}</span>
+      </div>
+      <div class="rec-desc">${esc(r.description||'')}</div>
+    </div>`).join('');
+
+  // ── Config match section ──
+  let configMatchHtml = '';
+  if (hasPdf && data.configMatch) {
+    const cm = data.configMatch;
+    const compatClass = { compatible:'pass', partial:'partial', incompatible:'fail' }[cm.overallCompatibility] || 'pending';
+    const compatLabel = { compatible:'✅ Compatible', partial:'⚠ Partially Compatible', incompatible:'❌ Incompatible' }[cm.overallCompatibility] || cm.overallCompatibility;
+
+    const itemsHtml = (cm.items || []).map(item => {
+      const cls = item.status === 'mismatch' ? 'mismatch' : item.status === 'unsupported' ? 'unsupported' : 'ok';
+      return `
+        <div class="mismatch-item ${cls}">
+          <div class="mi-top">
+            <div class="mi-param">${esc(item.parameter||'')}</div>
+            <span class="mi-tag ${cls}">${cls.toUpperCase()}</span>
+          </div>
+          <div class="mi-detail">${esc(item.detail||'')}</div>
+          <div class="mi-values">
+            ${item.logValue  ? `<span class="mi-val log-val">Log: ${esc(item.logValue)}</span>`  : ''}
+            ${item.specValue ? `<span class="mi-val spec-val">Spec: ${esc(item.specValue)}</span>` : ''}
+          </div>
+        </div>`;
+    }).join('');
+
+    configMatchHtml = `
+    <!-- Config Match -->
+    <div class="section-card" style="border-left: 3px solid var(--purple);">
+      <div class="section-title" style="color:var(--purple)">📋 Config Compatibility Check
+        <span class="badge ${compatClass}" style="margin-left:auto;font-size:11px">${compatLabel}</span>
+      </div>
+      <div class="match-overview" style="margin-bottom:14px">
+        <div class="mstat matched"><div class="mn">${cm.matched ?? '—'}</div><div class="ml">Matched</div></div>
+        <div class="mstat mismatch"><div class="mn">${cm.mismatches ?? '—'}</div><div class="ml">Mismatch</div></div>
+        <div class="mstat unsupported"><div class="mn">${cm.unsupported ?? '—'}</div><div class="ml">Unsupported</div></div>
+      </div>
+      <div class="mismatch-list">${itemsHtml || '<div style="color:var(--text-muted);font-size:13px">No discrepancies found.</div>'}</div>
+    </div>`;
+  }
+
+  const panel = document.getElementById('rightPanel');
+  panel.innerHTML = `
+    <!-- Header -->
+    <div class="result-header">
+      <div class="rh-left">
+        <div class="rh-icon">📊</div>
+        <div>
+          <div class="rh-title">Analysis Complete</div>
+          <div class="rh-sub">${esc(logFileName)}${hasPdf ? ' + ' + esc(pdfFileName) : ''} · ${new Date().toLocaleTimeString()}</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <div class="severity-badge ${sev}">${sevLabel}</div>
+        <button class="export-btn" onclick="exportReport()">⬇ Export</button>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="err-stats">
+      <div class="estat errors">
+        <div class="en">${data.errorCount ?? '—'}</div>
+        <div class="el">Errors</div>
+      </div>
+      <div class="estat warnings">
+        <div class="en">${data.warningCount ?? '—'}</div>
+        <div class="el">Warnings</div>
+      </div>
+      <div class="estat lines">
+        <div class="en">${(data.totalLines ?? logContent.split('\n').length).toLocaleString()}</div>
+        <div class="el">Log Lines</div>
+      </div>
+    </div>
+
+    <!-- Summary -->
+    <div class="summary-card">
+      <div class="sc-title">📝 Summary</div>
+      <div class="sc-text">${esc(data.summary||'No summary provided.')}</div>
+    </div>
+
+    ${configMatchHtml}
+
+    <!-- Root causes -->
+    <div class="section-card">
+      <div class="section-title">🔎 Root Cause Analysis</div>
+      <div class="rc-list">${rcHtml || '<div style="color:var(--text-muted);font-size:13px">No root causes identified.</div>'}</div>
+    </div>
+
+    <!-- Recommendations -->
+    <div class="section-card">
+      <div class="section-title">💡 Recommended Actions</div>
+      <div class="rec-list">${recHtml || '<div style="color:var(--text-muted);font-size:13px">No recommendations.</div>'}</div>
+    </div>
+
+    <!-- Raw log toggle -->
+    <div class="raw-toggle" onclick="toggleRawLog(this)">
+      <span class="raw-toggle-title">📋 View Full Log</span>
+      <span class="raw-chevron" id="rawChevron">▶</span>
+    </div>
+    <div class="raw-log-box" id="rawLogBox">${esc(fullLog)}</div>
+  `;
+
+  // Store for export
+  window._lastAnalysis = { data, logFileName, hasPdf };
+}
+
+function toggleRawLog(el) {
+  const box = document.getElementById('rawLogBox');
+  const chev = document.getElementById('rawChevron');
+  box.classList.toggle('visible');
+  chev.classList.toggle('open');
+  if (box.classList.contains('visible')) {
+    chev.textContent = '▼';
+    box.scrollTop = 0;
+  } else {
+    chev.textContent = '▶';
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// Error display
+// ══════════════════════════════════════════════════════
+function showError(msg) {
+  document.getElementById('rightPanel').innerHTML = `
+    <div class="error-card">
+      <div class="ec-icon">⚠️</div>
+      <div>
+        <div class="ec-title">Analysis Failed</div>
+        <div class="ec-msg">${esc(msg)}</div>
+      </div>
+    </div>
+    <div class="placeholder">
+      <div class="ph-icon" style="font-size:32px">🔁</div>
+      <p>Check your API key and network connection, then try again.</p>
+    </div>`;
+}
+
+// ══════════════════════════════════════════════════════
+// Export
+// ══════════════════════════════════════════════════════
+function exportReport() {
+  if (!window._lastAnalysis) return;
+  const { data, logFileName, hasPdf } = window._lastAnalysis;
+  const d = data;
+
+  const configLines = hasPdf && d.configMatch ? [
+    ``,
+    `─── CONFIG COMPATIBILITY: ${(d.configMatch.overallCompatibility||'').toUpperCase()} ───`,
+    `Matched: ${d.configMatch.matched}  |  Mismatches: ${d.configMatch.mismatches}  |  Unsupported: ${d.configMatch.unsupported}`,
+    ...(d.configMatch.items||[]).map(i => `[${i.status?.toUpperCase()}] ${i.parameter}\n   ${i.detail}\n   Log: ${i.logValue}  |  Spec: ${i.specValue}`),
+  ] : [];
+
+  const txt = [
+    `FAIL LOG ANALYSIS REPORT`,
+    `Generated: ${new Date().toLocaleString()}`,
+    `File: ${logFileName}`,
+    hasPdf ? `Config PDF: ${pdfFileName}` : '',
+    `Severity: ${d.severity?.toUpperCase()}`,
+    `Errors: ${d.errorCount}  |  Warnings: ${d.warningCount}  |  Lines: ${d.totalLines}`,
+    ``,
+    `─── SUMMARY ───`,
+    d.summary,
+    ...configLines,
+    ``,
+    `─── ROOT CAUSES ───`,
+    ...(d.rootCauses||[]).map(rc => `#${rc.rank} ${rc.cause}\n   ${rc.detail}\n   Evidence: ${rc.evidence}`),
+    ``,
+    `─── RECOMMENDATIONS ───`,
+    ...(d.recommendations||[]).map(r => `[${r.type?.toUpperCase()}] ${r.title}\n   ${r.description}`),
+  ].filter(l => l !== undefined).join('\n');
+
+  const blob = new Blob([txt], { type:'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `analysis_${logFileName.replace(/\.[^.]+$/, '')}_${Date.now()}.txt`;
+  a.click();
+}
+
+// ══════════════════════════════════════════════════════
+// Helpers
+// ══════════════════════════════════════════════════════
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+function formatBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1024*1024) return (b/1024).toFixed(1) + ' KB';
+  return (b/1024/1024).toFixed(2) + ' MB';
+}
+</script>
+</body>
+</html>
